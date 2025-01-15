@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unordered_map>
 
+#include "city.h"
 #include "hash.h"
 #if defined PATH_MAX
 #undef PATH_MAX
@@ -14,9 +15,12 @@
 #define PATH_MAX 4096
 #define BLOCK_SIZE 8192
 
+extern uint32_t CityHash32(const char *buf, size_t len);
+extern uint64_t CityHash64(const char *buf, size_t len);
+
 struct DedupItem
 {
-    uint32_t linksToBlock_;;
+    uint64_t linksToBlock_;
     size_t blockSize_;
     char* blockData_;
 };
@@ -24,18 +28,18 @@ struct DedupItem
 struct RestoreItem
 {
     std::string name_;
-    std::deque<uint32_t> hashes_;
+    std::deque<uint64_t> hashes_;
 };
 
-std::unordered_map<uint32_t,DedupItem> dedupContainer;
+std::unordered_map<uint64_t,DedupItem> dedupContainer;
 
 int main()
 {
-    char path[]="/home/yaroslav/Deadstream.avi";
+    char path[]="/home/yaroslav/test.bin";
     FILE* inPtr=fopen(path,"rb");
     if(!inPtr)
         return 1;
-    RestoreItem restItem{"Restored.avi"};
+    RestoreItem restItem{"Restored.bin"};
 
     size_t readed=0;
     size_t realSize=0;
@@ -45,10 +49,10 @@ int main()
     while((readed=fread(block,sizeof(char),BLOCK_SIZE,inPtr)) > 0){
         ++stepCounter;
         realSize+=readed;
-        uint32_t hash=SuperFastHash(block,readed);
-        restItem.hashes_.push_back(hash);
+        uint64_t hash64=CityHash64(block,readed);
+        restItem.hashes_.push_back(hash64);
 
-        auto found=dedupContainer.find(hash);
+        auto found=dedupContainer.find(hash64);
         if(found!=dedupContainer.end())
             ++(found->second.linksToBlock_);
         else{
@@ -56,7 +60,7 @@ int main()
             dedupItem.blockSize_=readed;
             dedupItem.blockData_=(char*)malloc(readed);
             memcpy(dedupItem.blockData_,block,readed);
-            dedupContainer.emplace(hash,std::move(dedupItem));
+            dedupContainer.emplace(hash64,std::move(dedupItem));
             dedupSize+=readed;
         }
     }
@@ -72,7 +76,7 @@ int main()
         return 1;
     size_t realRestoredSize=0;
     while(!restItem.hashes_.empty()){
-        uint32_t hash=restItem.hashes_.front();
+        uint64_t hash=restItem.hashes_.front();
         restItem.hashes_.pop_front();
         auto found=dedupContainer.find(hash);
         if(found!=dedupContainer.end()){
